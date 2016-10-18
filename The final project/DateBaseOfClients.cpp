@@ -14,6 +14,7 @@
 #include <thread> 
 
 const std::string _filename = "input.txt";
+static int numberClients = 0;
 
 typedef std::pair<const std::string, const std::string> LogPas;
 typedef std::pair<std::vector<LogPas>::iterator, int> referID;
@@ -46,7 +47,7 @@ static std::vector<referID> DBClients_referID_;
 static std::vector<infoID> DBClients_infoID_;
 	// BD message
 static std::vector<messadesClient> DBClients_send_message;
-static int numberClients = 0;
+
 class DateBaseOfClients{
 	// members of class
 	int ID_client;

@@ -22,6 +22,27 @@ typedef boost::shared_ptr<talk_to_client> client_ptr;
 typedef std::vector<client_ptr> array;
 array clients;
 
+struct Client{
+	//ip::tcp::socket _sock;
+	std::string _name;
+	std::string _password;
+	int _id;
+	Client(//ip::tcp::socket sock,
+		   std::string name,
+		   std::string password,
+		   int id):
+	//_sock(sock), 
+		_id(id)
+	{
+		int bound = name.find(" ");
+		std::string command = name.substr(0, bound);
+		_name = name.substr(bound + 1);
+		_password = password.substr(0, password.length()-1);
+	}
+};
+
+extern std::vector<Client> clients_messange;
+
 #define MEM_FN(x)       boost::bind(&self_type::x, shared_from_this())
 #define MEM_FN1(x,y)    boost::bind(&self_type::x, shared_from_this(),y)
 #define MEM_FN2(x,y,z)  boost::bind(&self_type::x, shared_from_this(),y,z)
@@ -99,6 +120,11 @@ private:
 
 		if ((plus != std::string::npos) && 
 			(authentication(login, password))){
+			
+			Client a(//sock_, 
+				login, password, numberClients);
+
+			clients_messange.push_back(a);
 
 			std::cout << msg.substr(space + 1, plus - space - 1)
 				<<" logged in"<<std::endl;
