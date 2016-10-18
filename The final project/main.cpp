@@ -10,6 +10,8 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/thread.hpp> 
 #include <boost/enable_shared_from_this.hpp>
+#include "Identification.cpp"
+
 //using namespace std;
 using namespace boost::asio;
 using namespace boost::posix_time;
@@ -26,7 +28,8 @@ array clients;
 
 void update_clients_changed();
 
-class talk_to_client : public boost::enable_shared_from_this<talk_to_client>, boost::noncopyable {
+class talk_to_client : public boost::enable_shared_from_this<talk_to_client>, 
+							  boost::noncopyable, Identification {
     typedef talk_to_client self_type;
 	talk_to_client() : sock_(service), started_(false),
 					   timer_(service), clients_changed_(false) {
@@ -64,31 +67,60 @@ public:
 	void set_clients_changed() { clients_changed_ = true;}
 private:
     void on_read(const error_code & err, size_t bytes) {
-        /*if ( !err) {
-            std::string msg(read_buffer_, bytes);
-			if (msg == "quit\n")	{
-				stop();
-			}
-            // echo message back, and then stop
-            do_write(msg);
-        }
-        stop();*/
 		if (err) stop();
 		if ( !started() ) return;
 		// process the msg
 		std::string msg(read_buffer_, bytes);
-		if (msg.find("login ") == 0) on_login(msg);
+
+		if ( (msg.find("login ") == 0) ||
+			 (msg.find("Sign ") == 0)) on_login(msg);
 		else if (msg.find("ping") == 0) on_ping();
 		else if (msg.find("ask_clients") == 0) on_clients();
-		else std::cerr<<"invalid msg "<<msg<<std::endl;
+		else if (msg.find("message") == 0) {
+			int bound = msg.find(" ") + 1;
+			on_message(msg.substr(bound));
+		}
+		else if (msg.find("quit") == 0) {
+			stop();
+			do_write(msg);
+		}
+		else {
+			std::cerr<<"invalid msg "<<msg<<std::endl;
+			do_write("wrong command\n");
+			//stop();
+		}
     }
 
 	void on_login(const std::string & msg){
-		std::istringstream in(msg);
-		in >> username_ >> username_;
-		std::cout << username_ <<" logged in"<<std::endl;
-		do_write("login ok\n");
-		update_clients_changed();
+		int plus = msg.find("+"),
+			space = msg.find(" ");
+		const std::string login = msg.substr(0, plus),
+						  password = msg.substr(plus + 1);
+
+		if ((plus != std::string::npos) && 
+			(authentication(login, password))){
+
+			std::cout << msg.substr(space + 1, plus - space - 1)
+				<<" logged in"<<std::endl;
+			do_write("login ok\n");
+			update_clients_changed();
+
+		}
+		else
+			do_write("Wrong input login and password\n");
+	}
+
+	void on_message(const std::string & otherClient){
+		// main func
+		int bound = otherClient.find(" ");
+		std::string nameClient = otherClient.substr(0, bound),
+					message = otherClient.substr(bound + 1);
+		for (std::vector<messadesClient>::iterator it = DBClients_send_message.begin();
+			it != DBClients_send_message.end(); ++it)
+		{
+			if ((*it).first == nameClient)
+				it->second.push_back(std::make_pair(name_thisClient, message));
+		}
 	}
 
 	void on_ping(){
@@ -156,6 +188,8 @@ private:
 	deadline_timer timer_;
 	boost::posix_time::ptime last_ping;
 	bool clients_changed_;
+	// process send/receive messages;
+	const std::string name_thisClient;
 };
 
 void update_clients_changed() {
@@ -178,5 +212,5 @@ int main(int argc, char* argv[]) {
     talk_to_client::ptr client = talk_to_client::new_();
     acceptor.async_accept(client->sock(), boost::bind(handle_accept,client,_1));
     service.run();
-	std::cout<<"THE END hasn't ever come, but the winter is coming soon"<<std::endl;
+	std::cout<<"THE END hasn't ever come, that the winter is coming soon"<<std::endl;
 }

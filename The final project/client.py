@@ -5,14 +5,17 @@ import select
 def isAuthentication(sock):
     try:
         isOkay = False;
-        register = input('Sign up or Login? ')
-        sign = ''
-        if 'sign' in register.lower():
-            sign = 'Sign '
-        else:
-            sign = 'login '
 
         while(isOkay == False):
+            register = input('Sign up or Login? ')
+            sign = ''
+            if 'sign' in register.lower():
+                sign = 'Sign '
+            elif 'login' in register.lower():
+                sign = 'login '
+            else:
+                continue    
+
             login = input('Choose your nameUsers: ')
             password = input('Your password: ')
 
@@ -20,10 +23,10 @@ def isAuthentication(sock):
             #sock.send(bytes(string +'\n', 'cp866'))
             string = sign + login+'+'+password + '\n'
             sock.send(string.encode())
-            print(1)
+            
             response = sock.recv(512).decode('cp866')
             print("response: "+response)
-            print(1)
+            
             if 'login ok' in response:
                 isOkay = True
             else:
@@ -49,7 +52,7 @@ def chat_client():
         sock.connect((host_ip, port))
 
         nameUsers = isAuthentication(sock)
-        print(2)
+
         msg = input("%s> " % nameUsers)
 
         while ('quit' in msg) == False:
