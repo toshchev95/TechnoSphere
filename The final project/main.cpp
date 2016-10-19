@@ -10,8 +10,6 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/thread.hpp> 
 #include <boost/enable_shared_from_this.hpp>
-#include "Identification.cpp"
-
 //using namespace std;
 using namespace boost::asio;
 using namespace boost::posix_time;
@@ -22,26 +20,6 @@ typedef boost::shared_ptr<talk_to_client> client_ptr;
 typedef std::vector<client_ptr> array;
 array clients;
 
-struct Client{
-	//ip::tcp::socket _sock;
-	std::string _name;
-	std::string _password;
-	int _id;
-	Client(//ip::tcp::socket sock,
-		   std::string name,
-		   std::string password,
-		   int id):
-	//_sock(sock), 
-		_id(id)
-	{
-		int bound = name.find(" ");
-		std::string command = name.substr(0, bound);
-		_name = name.substr(bound + 1);
-		_password = password.substr(0, password.length()-1);
-	}
-};
-
-extern std::vector<Client> clients_messange;
 
 #define MEM_FN(x)       boost::bind(&self_type::x, shared_from_this())
 #define MEM_FN1(x,y)    boost::bind(&self_type::x, shared_from_this(),y)
@@ -49,8 +27,7 @@ extern std::vector<Client> clients_messange;
 
 void update_clients_changed();
 
-class talk_to_client : public boost::enable_shared_from_this<talk_to_client>, 
-							  boost::noncopyable, Identification {
+class talk_to_client : public boost::enable_shared_from_this<talk_to_client>, boost::noncopyable {
     typedef talk_to_client self_type;
 	talk_to_client() : sock_(service), started_(false),
 					   timer_(service), clients_changed_(false) {
@@ -88,18 +65,27 @@ public:
 	void set_clients_changed() { clients_changed_ = true;}
 private:
     void on_read(const error_code & err, size_t bytes) {
+        /*if ( !err) {
+            std::string msg(read_buffer_, bytes);
+			if (msg == "quit\n")	{
+				stop();
+			}
+            // echo message back, and then stop
+            do_write(msg);
+        }
+        stop();*/
 		if (err) stop();
 		if ( !started() ) return;
+		
 		// process the msg
 		std::string msg(read_buffer_, bytes);
-
-		if ( (msg.find("login ") == 0) ||
-			 (msg.find("Sign ") == 0)) on_login(msg);
+		int bound = msg.find(" ") + 1,
+			boundEnd = msg.length() - bound - 1;
+		if (msg.find("login ") == 0) on_login(msg.substr(bound, boundEnd));
 		else if (msg.find("ping") == 0) on_ping();
 		else if (msg.find("ask_clients") == 0) on_clients();
 		else if (msg.find("message") == 0) {
-			int bound = msg.find(" ") + 1;
-			on_message(msg.substr(bound));
+			on_message(msg.substr(bound, boundEnd));
 		}
 		else if (msg.find("quit") == 0) {
 			stop();
@@ -112,41 +98,43 @@ private:
 		}
     }
 
-	void on_login(const std::string & msg){
-		int plus = msg.find("+"),
-			space = msg.find(" ");
-		const std::string login = msg.substr(0, plus),
-						  password = msg.substr(plus + 1);
-
-		if ((plus != std::string::npos) && 
-			(authentication(login, password))){
-			
-			Client a(//sock_, 
-				login, password, numberClients);
-
-			clients_messange.push_back(a);
-
-			std::cout << msg.substr(space + 1, plus - space - 1)
-				<<" logged in"<<std::endl;
-			do_write("login ok\n");
-			update_clients_changed();
-
-		}
-		else
-			do_write("Wrong input login and password\n");
-	}
-
 	void on_message(const std::string & otherClient){
 		// main func
 		int bound = otherClient.find(" ");
 		std::string nameClient = otherClient.substr(0, bound),
 					message = otherClient.substr(bound + 1);
-		for (std::vector<messadesClient>::iterator it = DBClients_send_message.begin();
-			it != DBClients_send_message.end(); ++it)
+		
+		for (std::vector<client_ptr>::iterator it = clients.begin();
+			 it != clients.end(); ++it)
 		{
-			if ((*it).first == nameClient)
-				it->second.push_back(std::make_pair(name_thisClient, message));
+			if ((*it)->username_ == nameClient)
+			{
+				do_write(message, (*it)->sock_);
+				std::cout<<this->username_<<" sent to "
+					<<nameClient<<" "<<"\""<<message<<"\""<<std::endl;
+				break;
+			}
+
 		}
+		stop();
+		//*this;
+	}
+
+	void on_login(const std::string & msg){
+
+		
+		// parse
+		int bound = msg.find("+");
+		std::string name_ = msg.substr(0, bound),
+			password= msg.substr(bound + 1, msg.length()-1);
+		this->username_ = name_;
+		this->password_ = password;
+
+		//std::istringstream in(msg);
+		//in >> username_ >> username_;
+		std::cout << username_ <<" logged in"<<std::endl;
+		do_write("login ok\n");
+		update_clients_changed();
 	}
 
 	void on_ping(){
@@ -156,8 +144,10 @@ private:
 
 	void on_clients(){
 		std::string msg;
+		//::cout << clients[0]->username_ << '!' <<  std::endl;
 		for (array::iterator b = clients.begin(), e = clients.end(); b != e; ++b){
-			msg += (*b)->username() + " ";
+			msg += (*b)->username_ + " ";
+		//	std::cout<<"! "<<(*b)->username_<<std::endl;
 		}
 		do_write("clients " + msg + "\n");
 	}
@@ -198,24 +188,31 @@ private:
         sock_.async_write_some( buffer(write_buffer_, msg.size()), 
                                 MEM_FN2(on_write,_1,_2));
     }
+	void do_write(const std::string & msg, ip::tcp::socket &socket) {
+
+        std::copy(msg.begin(), msg.end(), write_buffer_);
+        socket.async_write_some( buffer(write_buffer_, msg.size()), 
+                                MEM_FN2(on_write,_1,_2));
+    }
     size_t read_complete(const boost::system::error_code & err, size_t bytes) {
         if ( err) return 0;
         bool found = std::find(read_buffer_, read_buffer_ + bytes, '\n') < read_buffer_ + bytes;
         // we read one-by-one until we get to enter, no buffering
         return found ? 0 : 1;
     }
-private:
+protected:
     ip::tcp::socket sock_;
+	std::string m_login;
+private:
     enum { max_msg = 1024 };
     char read_buffer_[max_msg];
     char write_buffer_[max_msg];
     bool started_;
 	std::string username_;
+	std::string password_;
 	deadline_timer timer_;
 	boost::posix_time::ptime last_ping;
 	bool clients_changed_;
-	// process send/receive messages;
-	const std::string name_thisClient;
 };
 
 void update_clients_changed() {
@@ -238,5 +235,5 @@ int main(int argc, char* argv[]) {
     talk_to_client::ptr client = talk_to_client::new_();
     acceptor.async_accept(client->sock(), boost::bind(handle_accept,client,_1));
     service.run();
-	std::cout<<"THE END hasn't ever come, that the winter is coming soon"<<std::endl;
+	std::cout<<"THE END hasn't ever come, but the winter is coming soon"<<std::endl;
 }
