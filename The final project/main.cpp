@@ -20,6 +20,7 @@ typedef boost::shared_ptr<talk_to_client> client_ptr;
 typedef std::vector<client_ptr> array;
 array clients;
 
+
 #define MEM_FN(x)       boost::bind(&self_type::x, shared_from_this())
 #define MEM_FN1(x,y)    boost::bind(&self_type::x, shared_from_this(),y)
 #define MEM_FN2(x,y,z)  boost::bind(&self_type::x, shared_from_this(),y,z)
@@ -75,17 +76,62 @@ private:
         stop();*/
 		if (err) stop();
 		if ( !started() ) return;
+		
 		// process the msg
 		std::string msg(read_buffer_, bytes);
-		if (msg.find("login ") == 0) on_login(msg);
+		int bound = msg.find(" ") + 1,
+			boundEnd = msg.length() - bound - 1;
+		if (msg.find("login ") == 0) on_login(msg.substr(bound, boundEnd));
 		else if (msg.find("ping") == 0) on_ping();
 		else if (msg.find("ask_clients") == 0) on_clients();
-		else std::cerr<<"invalid msg "<<msg<<std::endl;
+		else if (msg.find("message") == 0) {
+			on_message(msg.substr(bound, boundEnd));
+		}
+		else if (msg.find("quit") == 0) {
+			stop();
+			do_write(msg);
+		}
+		else {
+			std::cerr<<"invalid msg "<<msg<<std::endl;
+			do_write("wrong command\n");
+			//stop();
+		}
     }
 
+	void on_message(const std::string & otherClient){
+		// main func
+		int bound = otherClient.find(" ");
+		std::string nameClient = otherClient.substr(0, bound),
+					message = otherClient.substr(bound + 1);
+		
+		for (std::vector<client_ptr>::iterator it = clients.begin();
+			 it != clients.end(); ++it)
+		{
+			if ((*it)->username_ == nameClient)
+			{
+				do_write(message, (*it)->sock_);
+				std::cout<<this->username_<<" sent to "
+					<<nameClient<<" "<<"\""<<message<<"\""<<std::endl;
+				break;
+			}
+
+		}
+		stop();
+		//*this;
+	}
+
 	void on_login(const std::string & msg){
-		std::istringstream in(msg);
-		in >> username_ >> username_;
+
+		
+		// parse
+		int bound = msg.find("+");
+		std::string name_ = msg.substr(0, bound),
+			password= msg.substr(bound + 1, msg.length()-1);
+		this->username_ = name_;
+		this->password_ = password;
+
+		//std::istringstream in(msg);
+		//in >> username_ >> username_;
 		std::cout << username_ <<" logged in"<<std::endl;
 		do_write("login ok\n");
 		update_clients_changed();
@@ -98,8 +144,10 @@ private:
 
 	void on_clients(){
 		std::string msg;
+		//::cout << clients[0]->username_ << '!' <<  std::endl;
 		for (array::iterator b = clients.begin(), e = clients.end(); b != e; ++b){
-			msg += (*b)->username() + " ";
+			msg += (*b)->username_ + " ";
+		//	std::cout<<"! "<<(*b)->username_<<std::endl;
 		}
 		do_write("clients " + msg + "\n");
 	}
@@ -140,19 +188,28 @@ private:
         sock_.async_write_some( buffer(write_buffer_, msg.size()), 
                                 MEM_FN2(on_write,_1,_2));
     }
+	void do_write(const std::string & msg, ip::tcp::socket &socket) {
+
+        std::copy(msg.begin(), msg.end(), write_buffer_);
+        socket.async_write_some( buffer(write_buffer_, msg.size()), 
+                                MEM_FN2(on_write,_1,_2));
+    }
     size_t read_complete(const boost::system::error_code & err, size_t bytes) {
         if ( err) return 0;
         bool found = std::find(read_buffer_, read_buffer_ + bytes, '\n') < read_buffer_ + bytes;
         // we read one-by-one until we get to enter, no buffering
         return found ? 0 : 1;
     }
-private:
+protected:
     ip::tcp::socket sock_;
+	std::string m_login;
+private:
     enum { max_msg = 1024 };
     char read_buffer_[max_msg];
     char write_buffer_[max_msg];
     bool started_;
 	std::string username_;
+	std::string password_;
 	deadline_timer timer_;
 	boost::posix_time::ptime last_ping;
 	bool clients_changed_;
