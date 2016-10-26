@@ -39,7 +39,7 @@ void test() {
 
 }
 
-Set & processData(const string & str) {
+Set processData(const string & str) {
 	Set set(0, size);
 	string s, command = "";
 	bool isDigit;
