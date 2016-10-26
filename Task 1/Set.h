@@ -15,7 +15,7 @@ private:
 	friend const Set & operator - (const Set & s);
 
 public:
-	Set(int min = 0, int max = 255);
+	Set(int min = 0, int max = 1023);
 
 	Set(const Set & s);
 
